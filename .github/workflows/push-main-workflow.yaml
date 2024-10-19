@@ -1,0 +1,12 @@
+name: Push-Main-Workflow
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+    
+  deploy:
+    secrets: inherit
+    uses: ./.github/workflows/deploy-ira.yaml

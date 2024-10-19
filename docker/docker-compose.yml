@@ -1,0 +1,143 @@
+version: "3.5"
+
+services:
+
+  kong:
+    image: registry.starboardsocial.nl/kong:latest
+    container_name: 'StarboardSocial-Kong'
+    networks:
+      - starboardsocial_net
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: off
+      KONG_DECLARATIVE_CONFIG: kong.yml
+      KONG_ADMIN_GUI_PATH: '/'
+      KONG_ADMIN_LISTEN: 0.0.0.0:8901
+      KONG_ADMIN_GUI_URL: 'http://localhost:8902'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://kong:8900"]
+      interval: 5s
+      timeout: 2s
+      retries: 15
+    ports:
+      - 8900:8000
+      - 8901:8001
+      - 8902:8002
+      - 8943:8443
+      - 8944:8444
+
+  rabbitmq:
+    image: rabbitmq:4.0-management
+    container_name: 'StarboardSocial-RabbitMQ'
+    restart: unless-stopped
+    environment:
+        RABBITMQ_DEFAULT_USER: ${RABBIT_USERNAME}
+        RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD}
+    ports:
+        - 15672:15672
+    volumes:
+        - starboardsocial-rabbitmq-data:/var/lib/rabbitmq
+        - starboardsocial-rabbitmq-data:/var/log/rabbitmq
+    networks:
+        - starboardsocial_net
+
+  fusionauth_db:
+    image: postgres:16.0-bookworm
+    container_name: 'StarboardSocial-FusionAuth-DB'
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: ${FA_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${FA_POSTGRES_PASSWORD}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - starboardsocial_net
+    restart: unless-stopped
+    volumes:
+      - starboardsocial-fusionauth_db_data:/var/lib/postgresql/data
+
+  search:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: 'StarboardSocial-FusionAuth-Search'
+    environment:
+      cluster.name: fusionauth
+      discovery.type: single-node
+      node.name: search
+      plugins.security.disabled: true
+      bootstrap.memory_lock: true
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    healthcheck:
+      interval: 10s
+      retries: 80
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:9200/
+    restart: unless-stopped
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - 9200:9200 # REST API
+      - 9600:9600 # Performance Analyzer
+    volumes:
+      - starboardsocial-fusionauth_search_data:/usr/share/opensearch/data
+    networks:
+      - starboardsocial_net
+
+  fusionauth:
+      image: fusionauth/fusionauth-app:latest
+      container_name: 'StarboardSocial-FusionAuth-App'
+      depends_on:
+        fusionauth_db:
+          condition: service_healthy
+        search:
+          condition: service_healthy
+      environment:
+        DATABASE_URL: jdbc:postgresql://fusionauth_db:5432/fusionauth
+        DATABASE_ROOT_USERNAME: ${FA_POSTGRES_USER}
+        DATABASE_ROOT_PASSWORD: ${FA_POSTGRES_PASSWORD}
+        DATABASE_USERNAME: ${FA_POSTGRES_USER}
+        DATABASE_PASSWORD: ${FA_POSTGRES_PASSWORD}
+        FUSIONAUTH_APP_MEMORY: 512M
+        FUSIONAUTH_APP_RUNTIME_MODE: ${FA_APP_RUNTIME_MODE}
+        FUSIONAUTH_APP_URL: http://fusionauth:9011
+        SEARCH_SERVERS: http://search:9200
+        SEARCH_TYPE: elasticsearch
+      healthcheck:
+        test: curl --silent --fail http://localhost:9011/api/status -o /dev/null -w "%{http_code}"
+        interval: 5s
+        timeout: 5s
+        retries: 5
+      networks:
+        - starboardsocial_net
+      restart: unless-stopped
+      ports:
+        - 9011:9011
+      volumes:
+        - starboardsocial-fusionauth_fusionauth_config:/usr/local/fusionauth/config
+
+  
+volumes:
+  starboardsocial-rabbitmq-data:
+    name: starboardsocial-rabbitmq-data
+  starboardsocial-fusionauth_db_data:
+    name: starboardsocial-fusionauth_db_data
+    external: true
+  starboardsocial-fusionauth_fusionauth_config:
+    name: starboardsocial-fusionauth_fusionauth_config
+    external: true
+  starboardsocial-fusionauth_search_data:
+    name: starboardsocial-fusionauth_search_data
+    external: true
+
+
+networks:
+  starboardsocial_net:
+    driver: bridge
+    name: starboardsocial_net
+
