@@ -1,2 +1,3 @@
 *.tfvars
 *.env
+kubernetes/rabbitmq/rabbitmq-config.yaml
