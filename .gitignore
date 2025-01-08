@@ -1,3 +1,7 @@
 *.tfvars
+*.tfstate**
 *.env
 kubernetes/rabbitmq/rabbitmq-config.yaml
+FILE
+.terraform
+terraform/kubeconfig

@@ -1,33 +1,33 @@
 terraform {
   required_providers {
-    docker = {
-        source = "kreuzwerker/docker"
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "=4.14.0"
+    }
+    local = {
+      source  = "hashicorp/local"
+    }
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+      version = "2.35.1"
+    }
+    helm = {
+      source = "hashicorp/helm"
+      version = "2.17.0"
     }
   }
 }
 
-variable "registry_url" {
-  type = string
-}
 
-variable "registry_username" {
-  type = string
-  sensitive = true
-}
-
-variable "registry_password" {
-  type = string
-  sensitive = true
+module "azure" {
+  source = "./azure"
 }
 
 
-provider "docker" {
-  host = "unix:///var/run/docker.sock"
 
-  registry_auth {
-    address  = var.registry_url
-    username = var.registry_username
-    password = var.registry_password
-  }
+module "kubernetes" {
+  source = "./kubernetes"
+  
+  depends_on_azure_k8 = module.azure.ref-k8
+  external_ip = module.azure.external-ip
 }
-
